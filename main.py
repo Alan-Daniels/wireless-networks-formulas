@@ -48,20 +48,22 @@ class SolveFragment:
         if self.latex == None:
             t = Template(self.latexFormula)
             vars = dict(
-                map(lambda dep: (dep.name, dep.ShowAnswer(True)), self.dependancies)
+                map(lambda dep: (dep.name, dep.ShowAnswer(False)), self.dependancies)
             )
             print("latex", self.latexFormula, vars)
             self.latex = t.substitute(vars)
         return self.latex
 
     def ShowAnswer(self, recurse=False):
-        if self.answer == None:
+        if self.answer == None or recurse:
             t = Template(self.qalcFormula)
             vars = dict(
                 map(lambda dep: (dep.name, dep.ShowAnswer(True)), self.dependancies)
             )
             print("answer", self.qalcFormula, vars)
             r = t.substitute(vars)
+            if recurse:
+                return r
             self.answer = qalculate(r)
         return self.answer
 
@@ -95,7 +97,10 @@ class SolveFragment:
 
 def qalculate(input):
     return (
-        subprocess.run(["qalc", "-s", "prec 2", "-t", input], capture_output=True)
+        subprocess.run(
+            ["qalc", "-t", input],
+            capture_output=True,
+        )
         .stdout.decode()
         .strip()
         .replace("−", "-")
