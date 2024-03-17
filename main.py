@@ -1,49 +1,257 @@
 #! /usr/bin/env python
-import numpy as np
-
 from pylatex import Document, Section, Subsection, Tabular
 from pylatex import Math, TikZ, Axis, Plot, Figure, Matrix, Alignat
 from pylatex.utils import italic
 
 import os
+import subprocess
 import random
+from string import Template
+
+
+class SolveFragment:
+    """docstring for SolveFragment."""
+
+    def __init__(
+        self,
+        name,
+        latexFormula,
+        qalcFormula,
+        dependancies=[],
+        parents=[],
+        isSubStep=False,
+    ):
+        self.name = name
+        self.latexFormula = latexFormula
+        self.qalcFormula = qalcFormula
+        self.dependancies = dependancies
+        self.parents = parents
+        self.isSubStep = isSubStep
+        self.answer = None
+        self.latex = None
+        self.preview = None
+
+    def __str__(self):
+        return "{} => {}".format(self.latexFormula, self.qalcFormula)
+
+    def PreviewLatex(self, recurse=False):
+        if self.preview == None:
+            t = Template(self.latexFormula)
+            vars = dict(map(lambda dep: (dep.name, dep.name), self.dependancies))
+            self.preview = t.substitute(vars)
+        return self.preview
+
+    def ShowLatex(self, recurse=False):
+        if self.latex == None:
+            t = Template(self.latexFormula)
+            vars = dict(
+                map(lambda dep: (dep.name, dep.ShowAnswer(True)), self.dependancies)
+            )
+            self.latex = t.substitute(vars)
+        return self.latex
+
+    def ShowAnswer(self, recurse=False):
+        if self.answer == None:
+            t = Template(self.qalcFormula)
+            vars = dict(
+                map(lambda dep: (dep.name, dep.ShowAnswer(True)), self.dependancies)
+            )
+            r = t.substitute(vars)
+            self.answer = qalculate(r)
+        return self.answer
+
+    def RecurseAnswer(self, adoc):
+        if len(self.parents) < 1:
+            return
+        for ans in self.parents:
+            ans.RecurseAnswer(adoc)
+        adoc.append(
+            Math(
+                data=[self.name, "=", self.PreviewLatex(), "\\\\"],
+                escape=False,
+            )
+        )
+        if not self.isSubStep:
+            adoc.append(
+                Math(
+                    data=[self.name, "=", self.ShowLatex(), "\\\\"],
+                    escape=False,
+                )
+            )
+            adoc.append(
+                Math(
+                    data=[self.name, "=", self.ShowAnswer()],
+                    escape=True,
+                )
+            )
+            adoc.append("\n")
+
+
+def qalculate(input):
+    return (
+        subprocess.run(["qalc", "-s", "prec 2", "-t", input], capture_output=True)
+        .stdout.decode()
+        .strip()
+    )
+
+
+def qGiven(vars):
+    given = dict(filter(lambda v: not callable(v[1]), vars.items())).items()
+    qv = []
+    print("getting given vars")
+    for k, v in given:
+        print(k, v)
+        qv.append(v.name)
+        qv.append(v.latexFormula)
+    q = "Given " + ("{}={}, " * (given.__len__() - 1)) + "and {}={};\n"
+    return q.format(*qv)
+
+
+def qSect(title):
+    return Section(title), Section(title)
+
+
+def qSubSect(qparts):
+    q, a = Subsection(""), Subsection("")
+    for item in qparts:
+        q.append(item)
+        a.append(item)
+    return q, a
+
+
+def RandomVar(vars, name, source):
+    if not name in vars.keys():
+        b = source()
+        if callable(b):
+            b = b(vars)
+        else:
+            vars[name] = b
+    else:
+        b = vars[name]
+    return b
+
+
+def ShannonQueryC():
+    vars = {}
+    ans = ShannonSolveC(vars)
+    qdoc, adoc = qSubSect(
+        [
+            qGiven(vars),
+            "Using the ",
+            italic("Shannon Capacity Formula "),
+            "what is the theoretical maximum capacity?\n",
+        ]
+    )
+    ans.RecurseAnswer(adoc)
+    return qdoc, adoc
 
 
 # $$C = B\log_2(1+SNR)$$
-def ShannonSolveC(qdoc, adoc, vars, depth):
-    if depth == 0:
-        vars["B"] = RandomB(vars)
-        vars["SNR"] = RandomSNR(vars)
-        qdoc.append(
-            "Given B={} and SNR={};\n Using the ".format(vars["B"], vars["SNR"])
-        )
-        qdoc.append(italic("Shannon Capacity Formula "))
-        qdoc.append(
-            "what is the theoretical maximum capacity?\n".format(
-                vars["B"], vars["SNR"], italic("Shannon Capacity Formula")
-            )
-        )
-    if callable(vars["B"]):
-        vars["B"] = vars["B"](qdoc, adoc, vars, depth + 1)
-    if callable(vars["SNR"]):
-        vars["SNR"] = vars["SNR"](qdoc, adoc, vars, depth + 1)
+def ShannonSolveC(vars):
+    b = RandomVar(vars, "B", RandomB)
+    snr = RandomVar(vars, "SNR", RandomSNR)
+
+    trueFormula = SolveFragment(
+        "C", "$B\log_2(1+$SNR)", "$B log2(1+$SNR)", [b, snr], [b, snr], isSubStep=True
+    )
+
+    return SolveFragment(
+        "C",
+        "$B\\frac{\log_{10}(1+$SNR)}{\log_{10}2}",
+        "$B log2(1+$SNR)",
+        [b, snr],
+        [trueFormula],
+    )
 
 
 # $$B = f_H-f_L$$
-def SolveB(qdoc, adoc, vars, depth):
-    pass
+def SolveB(vars):
+    fH, fL = RandomFrqSet()
+    vars["f_H"] = fH
+    vars["f_L"] = fL
+    return SolveFragment("B", "($f_H - $f_L)", "($f_H - $f_L)", [fH, fL], [fH, fL])
 
 
 # $$SNR = 10^{(\frac{SNR_{dB}}{10})}$$
-def SolveSNR(qdoc, adoc, vars, depth):
-    pass
+def SolveSNR(vars):
+    snr_db = RandomVar(vars, "SNR_dB", RandomSNR_dB)
+    return SolveFragment(
+        "SNR", "10^{(\\frac{$SNR_dB}{10})}", "10^(($SNR_dB/10))", [snr_db], [snr_db]
+    )
 
 
-def RandomB(vars):
-    return 1_000_001
+# $$SNR_{dB} = 10\cdot\log_{10}\frac{signal\ power}{signal\ noise}$$
+def SolveSNR_dB(vars):
+    pwr = RandomdB("pwr")
+    noise = RandomdB("noise")
+    vars["pwr"] = pwr
+    vars["noise"] = noise
+    return SolveFragment(
+        "SNR_dB",
+        "10\cdot\log_{10}\\frac{$pwr}{$noise}",
+        "10 log10($pwr/$noise)",
+        [pwr, noise],
+        [pwr, noise],
+    )
 
-def RandomSNR(vars):
-    return 1.5
+
+def RandomB():
+    rng = random.randint(0, 3)
+    i = random.randint(1, 6)
+    if rng == 0:
+        return SolveFragment("B", "{}KHz".format(i), "{}E3".format(i))
+    elif rng == 1:
+        return SolveFragment("B", "{}MHz".format(i), "{}E6".format(i))
+    elif rng == 2:
+        return SolveFragment("B", "{}GHz".format(i), "{}E9".format(i))
+    elif rng == 3:
+        return SolveB
+
+
+def RandomSNR_dB():
+    rng = random.randint(0, 1)
+    if rng == 0:
+        return SolveSNR_dB
+    elif rng == 1:
+        u = random.randint(1, 5)
+        l = random.randint(11, 99)
+        return SolveFragment(
+            "SNR_dB", "{}.{}".format(u, l) + "dB", "{}.{}".format(u, l)
+        )
+
+
+def RandomSNR():
+    rng = random.randint(0, 1)
+    if rng == 0:
+        return SolveSNR
+    elif rng == 1:
+        u = random.randint(0, 3)
+        l = random.randint(11, 99)
+        return SolveFragment("SNR", "{}.{}".format(u, l), "{}.{}".format(u, l))
+
+
+def RandomFrqSet():
+    rng = random.randint(0, 1)
+    if rng == 0:
+        lower = random.randint(1, 99) * 100
+        upper = lower + (random.randint(1, 99) * 100)
+        return (
+            SolveFragment("f_H", "{}KHz".format(upper), "{}E3".format(upper)),
+            SolveFragment("f_L", "{}KHz".format(lower), "{}E3".format(lower)),
+        )
+    if rng == 1:
+        lower = random.randint(1, 99) * 10
+        upper = lower + (random.randint(1, 99) * 10)
+        return (
+            SolveFragment("f_H", "{}MHz".format(upper), "{}E6".format(upper)),
+            SolveFragment("f_L", "{}MHz".format(lower), "{}E6".format(lower)),
+        )
+
+
+def RandomdB(name):
+    u = random.randint(1, 5)
+    l = random.randint(11, 99)
+    return SolveFragment(name, "{}.{}".format(u, l) + "dB", "{}.{}".format(u, l))
 
 
 if __name__ == "__main__":
@@ -52,14 +260,16 @@ if __name__ == "__main__":
     qdoc = Document(geometry_options=geometry_options)
     adoc = Document(geometry_options=geometry_options)
 
-    qsect = Section("Shannon Capacity Formula")
-    asect = Section("Shannon Capacity Formula")
-    qdoc.append(qsect)
-    adoc.append(asect)
-    ShannonSolveC(qsect, asect, {}, 0)
+    sq, sa = qSect("Snannon Capacity Formula")
+    qdoc.append(sq)
+    adoc.append(sa)
+
+    q, a = ShannonQueryC()
+    sq.append(q)
+    sa.append(a)
 
     # making a pdf using .generate_pdf
     if not os.path.isdir("./build"):
         os.mkdir("./build")
-    qdoc.generate_pdf("./build/questions", clean_tex=True)
-    adoc.generate_pdf("./build/answers", clean_tex=True)
+    qdoc.generate_pdf("./build/questions", clean_tex=False)
+    adoc.generate_pdf("./build/answers", clean_tex=False)

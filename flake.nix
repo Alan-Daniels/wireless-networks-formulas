@@ -4,7 +4,6 @@
   inputs = {
     nixpkgs.url = github:NixOS/nixpkgs/nixos-unstable;
     utils.url = github:numtide/flake-utils;
-    utils.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   # This is for running on X86-64 Linux (the norm), Intel and M1 Macs.
@@ -29,7 +28,6 @@
         inputs = with pkgs;
           [
             python311
-            python311Packages.numpy
             python311Packages.pylatex # added above
             texliveFull
           ];
@@ -50,7 +48,6 @@
             preBuild = ''
               cat > requirements.txt << EOF
               pylatex
-              numpy
               EOF
               cat > setup.py << EOF
               from setuptools import setup
