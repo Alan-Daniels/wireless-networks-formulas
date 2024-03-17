@@ -20,8 +20,10 @@ class SolveFragment:
         dependancies=[],
         parents=[],
         isSubStep=False,
+        latexName=None,
     ):
         self.name = name
+        self.latexName = latexName
         self.latexFormula = latexFormula
         self.qalcFormula = qalcFormula
         self.dependancies = dependancies
@@ -38,6 +40,7 @@ class SolveFragment:
         if self.preview == None:
             t = Template(self.latexFormula)
             vars = dict(map(lambda dep: (dep.name, dep.name), self.dependancies))
+            print("preview", self.latexFormula, vars)
             self.preview = t.substitute(vars)
         return self.preview
 
@@ -47,6 +50,7 @@ class SolveFragment:
             vars = dict(
                 map(lambda dep: (dep.name, dep.ShowAnswer(True)), self.dependancies)
             )
+            print("latex", self.latexFormula, vars)
             self.latex = t.substitute(vars)
         return self.latex
 
@@ -56,31 +60,33 @@ class SolveFragment:
             vars = dict(
                 map(lambda dep: (dep.name, dep.ShowAnswer(True)), self.dependancies)
             )
+            print("answer", self.qalcFormula, vars)
             r = t.substitute(vars)
             self.answer = qalculate(r)
         return self.answer
 
     def RecurseAnswer(self, adoc):
-        if len(self.parents) < 1:
+        if len(self.parents) < 1 and not self.isSubStep:
             return
         for ans in self.parents:
             ans.RecurseAnswer(adoc)
+        name = self.latexName or self.name
         adoc.append(
             Math(
-                data=[self.name, "=", self.PreviewLatex(), "\\\\"],
+                data=[name, "=", self.PreviewLatex(), "\\\\"],
                 escape=False,
             )
         )
         if not self.isSubStep:
             adoc.append(
                 Math(
-                    data=[self.name, "=", self.ShowLatex(), "\\\\"],
+                    data=[name, "=", self.ShowLatex(), "\\\\"],
                     escape=False,
                 )
             )
             adoc.append(
                 Math(
-                    data=[self.name, "=", self.ShowAnswer()],
+                    data=[name, "=", self.ShowAnswer()],
                     escape=True,
                 )
             )
@@ -92,15 +98,14 @@ def qalculate(input):
         subprocess.run(["qalc", "-s", "prec 2", "-t", input], capture_output=True)
         .stdout.decode()
         .strip()
+        .replace("−", "-")
     )
 
 
 def qGiven(vars):
     given = dict(filter(lambda v: not callable(v[1]), vars.items())).items()
     qv = []
-    print("getting given vars")
     for k, v in given:
-        print(k, v)
         qv.append(v.name)
         qv.append(v.latexFormula)
     q = "Given " + ("{}={}, " * (given.__len__() - 1)) + "and {}={};\n"
@@ -164,6 +169,57 @@ def ShannonSolveC(vars):
     )
 
 
+def ShannonQueryB():
+    vars = {}
+    ans = ShannonSolveB(vars)
+    qdoc, adoc = qSubSect(
+        [
+            qGiven(vars),
+            "Using the ",
+            italic("Shannon Capacity Formula "),
+            "what is the bandwidth B?\n",
+        ]
+    )
+    ans.RecurseAnswer(adoc)
+    return qdoc, adoc
+
+
+def ShannonSolveB(vars):
+    snr = RandomVar(vars, "SNR", RandomSNR)
+    c = RandomVar(vars, "C", RandomC)
+    b = SolveFragment("B", "B", "1")
+
+    base = SolveFragment(
+        "", "$B\log_2(1+$SNR)", "", [b, snr], isSubStep=True, latexName="C"
+    )
+    base = SolveFragment(
+        "",
+        "\log_2(1+SNR)",
+        "",
+        [],
+        [base],
+        isSubStep=True,
+        latexName="\\frac{C}{B}",
+    )
+    base = SolveFragment(
+        "",
+        "\\frac{1}{\log_2(1+SNR)}",
+        "",
+        [],
+        [base],
+        isSubStep=True,
+        latexName="\\frac{B}{C}",
+    )
+    base = SolveFragment(
+        "B",
+        "$C\\frac{1}{\log_2(1+$SNR)}",
+        "$C*(1/log2(1+$SNR))",
+        [c, snr],
+        [c, snr, base],
+    )
+    return base
+
+
 # $$B = f_H-f_L$$
 def SolveB(vars):
     fH, fL = RandomFrqSet()
@@ -206,6 +262,17 @@ def RandomB():
         return SolveFragment("B", "{}GHz".format(i), "{}E9".format(i))
     elif rng == 3:
         return SolveB
+
+
+def RandomC():
+    rng = random.randint(0, 2)
+    i = random.randint(1, 6)
+    if rng == 0:
+        return SolveFragment("C", "{}Kbps".format(i), "{}E3".format(i))
+    elif rng == 1:
+        return SolveFragment("C", "{}Mbps".format(i), "{}E6".format(i))
+    elif rng == 2:
+        return SolveFragment("C", "{}Gbps".format(i), "{}E9".format(i))
 
 
 def RandomSNR_dB():
@@ -265,6 +332,10 @@ if __name__ == "__main__":
     adoc.append(sa)
 
     q, a = ShannonQueryC()
+    sq.append(q)
+    sa.append(a)
+
+    q, a = ShannonQueryB()
     sq.append(q)
     sa.append(a)
 
