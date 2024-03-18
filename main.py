@@ -6,6 +6,7 @@ from pylatex.utils import italic
 import os
 import subprocess
 import random
+import math
 from string import Template
 
 
@@ -39,7 +40,11 @@ class SolveFragment:
     def PreviewLatex(self, recurse=False):
         if self.preview == None:
             t = Template(self.latexFormula)
-            vars = dict(map(lambda dep: (dep.name, dep.name), self.dependancies))
+            vars = dict(
+                map(
+                    lambda dep: (dep.name, dep.latexName or dep.name), self.dependancies
+                )
+            )
             print("preview", self.latexFormula, vars)
             self.preview = t.substitute(vars)
         return self.preview
@@ -89,7 +94,7 @@ class SolveFragment:
             adoc.append(
                 Math(
                     data=[name, "=", self.ShowAnswer()],
-                    escape=True,
+                    escape=False,
                 )
             )
             adoc.append("\n")
@@ -111,7 +116,7 @@ def qGiven(vars):
     given = dict(filter(lambda v: not callable(v[1]), vars.items())).items()
     qv = []
     for k, v in given:
-        qv.append(v.name)
+        qv.append(v.latexName or v.name)
         qv.append(v.latexFormula)
     q = "Given " + ("{}={}, " * (given.__len__() - 1)) + "and {}={};\n"
     return q.format(*qv)
@@ -168,7 +173,7 @@ def ShannonSolveC(vars):
     return SolveFragment(
         "C",
         "$B\\frac{\log_{10}(1+$SNR)}{\log_{10}2}",
-        "$B log2(1+$SNR)",
+        "($B log2(1+$SNR))",
         [b, snr],
         [trueFormula],
     )
@@ -197,31 +202,83 @@ def ShannonSolveB(vars):
     base = SolveFragment(
         "", "$B\log_2(1+$SNR)", "", [b, snr], isSubStep=True, latexName="C"
     )
-    base = SolveFragment(
-        "",
-        "\log_2(1+SNR)",
-        "",
-        [],
-        [base],
-        isSubStep=True,
-        latexName="\\frac{C}{B}",
-    )
-    base = SolveFragment(
-        "",
-        "\\frac{1}{\log_2(1+SNR)}",
-        "",
-        [],
-        [base],
-        isSubStep=True,
-        latexName="\\frac{B}{C}",
-    )
+    # base = SolveFragment(
+    #    "",
+    #    "\log_2(1+SNR)",
+    #    "",
+    #    [],
+    #    [base],
+    #    isSubStep=True,
+    #    latexName="\\frac{C}{B}",
+    # )
+    # base = SolveFragment(
+    #    "",
+    #    "\\frac{1}{\log_2(1+SNR)}",
+    #    "",
+    #    [],
+    #    [base],
+    #    isSubStep=True,
+    #    latexName="\\frac{B}{C}",
+    # )
     base = SolveFragment(
         "B",
         "$C\\frac{1}{\log_2(1+$SNR)}",
-        "$C*(1/log2(1+$SNR))",
+        "($C*(1/log2(1+$SNR)))",
+        [c, snr],
+        isSubStep=True,
+    )
+    base = SolveFragment(
+        "B",
+        "$C\\frac{1}{\\frac{\log_{10}(1+$SNR)}{\log_{10}2}}",
+        "($C*(1/log2(1+$SNR)))",
         [c, snr],
         [c, snr, base],
     )
+    return base
+
+
+def NyquistQueryC(vars):
+    vars = {}
+    ans = NyquistSolveC(vars)
+    qdoc, adoc = qSubSect(
+        [
+            qGiven(vars),
+            "Using the ",
+            italic("Nyquist Bandwidth Formula "),
+            "what is the capacity C?\n",
+        ]
+    )
+    ans.RecurseAnswer(adoc)
+    return qdoc, adoc
+
+
+def NyquistSolveC(vars):
+    l = RandomVar(vars, "L", RandomL)
+    b = RandomVar(vars, "B", RandomB)
+    return SolveFragment("C", "2 \cdot $B \cdot $L", "2 * $B * $L", [l, b], [l, b])
+
+
+def NyquistQueryL(vars):
+    vars = {}
+    ans = NyquistSolveL(vars)
+    qdoc, adoc = qSubSect(
+        [
+            qGiven(vars),
+            "Using the ",
+            italic("Nyquist Bandwidth Formula "),
+            "what is __ L?\n",
+        ]
+    )
+    ans.RecurseAnswer(adoc)
+    return qdoc, adoc
+
+
+def NyquistSolveL(vars):
+    c = RandomVar(vars, "C", RandomC)
+    b = RandomVar(vars, "B", RandomB)
+    l = SolveFragment("L", "L", "1")
+    base = SolveFragment("C", "2 \cdot $B \cdot $L", "2 * $B * $L", [l, b], [l, b])
+    # todo
     return base
 
 
@@ -237,7 +294,7 @@ def SolveB(vars):
 def SolveSNR(vars):
     snr_db = RandomVar(vars, "SNR_dB", RandomSNR_dB)
     return SolveFragment(
-        "SNR", "10^{(\\frac{$SNR_dB}{10})}", "10^(($SNR_dB/10))", [snr_db], [snr_db]
+        "SNR", "10^{(\\frac{$SNR_dB}{10})}", "(10^($SNR_dB/10))", [snr_db], [snr_db]
     )
 
 
@@ -250,9 +307,10 @@ def SolveSNR_dB(vars):
     return SolveFragment(
         "SNR_dB",
         "10\cdot\log_{10}\\frac{$pwr}{$noise}",
-        "10 log10($pwr/$noise)",
+        "(10 log10($pwr/$noise))",
         [pwr, noise],
         [pwr, noise],
+        latexName="SNR_{dB}",
     )
 
 
@@ -288,7 +346,10 @@ def RandomSNR_dB():
         u = random.randint(1, 5)
         l = random.randint(11, 99)
         return SolveFragment(
-            "SNR_dB", "{}.{}".format(u, l) + "dB", "{}.{}".format(u, l)
+            "SNR_dB",
+            "{}.{}".format(u, l) + "dB",
+            "{}.{}".format(u, l),
+            latexName="SNR_{dB}",
         )
 
 
@@ -320,10 +381,32 @@ def RandomFrqSet():
         )
 
 
+def SolveL(vars):
+    m = RandomVar(vars, "M", RandomM)
+    base = SolveFragment("L", "\log_2M", "", isSubStep=True)
+    return SolveFragment(
+        "L", "\\frac{\log_{10}$M}{\log_{10}2}", "log2($M)", [m], [m, base]
+    )
+
+
 def RandomdB(name):
     u = random.randint(1, 5)
     l = random.randint(11, 99)
     return SolveFragment(name, "{}.{}".format(u, l) + "dB", "{}.{}".format(u, l))
+
+
+def RandomM():
+    i = math.pow(random.randint(2, 4), 2)
+    return SolveFragment("M", "{}".format(i), "{}".format(i))
+
+
+def RandomL():
+    rng = random.randint(0, 1)
+    if rng == 0:
+        return SolveL
+    elif rng == 1:
+        i = random.randint(2, 4)
+        return SolveFragment("L", "{}".format(i), "{}".format(i))
 
 
 if __name__ == "__main__":
@@ -332,7 +415,7 @@ if __name__ == "__main__":
     qdoc = Document(geometry_options=geometry_options)
     adoc = Document(geometry_options=geometry_options)
 
-    sq, sa = qSect("Snannon Capacity Formula")
+    sq, sa = qSect("Snannon Capacity")
     qdoc.append(sq)
     adoc.append(sa)
 
@@ -341,6 +424,18 @@ if __name__ == "__main__":
     sa.append(a)
 
     q, a = ShannonQueryB()
+    sq.append(q)
+    sa.append(a)
+
+    sq, sa = qSect("Nyquist Bandwidth")
+    qdoc.append(sq)
+    adoc.append(sa)
+
+    q, a = NyquistQueryC(vars)
+    sq.append(q)
+    sa.append(a)
+
+    q, a = NyquistQueryL(vars)
     sq.append(q)
     sa.append(a)
 
