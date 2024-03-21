@@ -267,6 +267,7 @@ def NyquistQueryL(vars):
             "Using the ",
             italic("Nyquist Bandwidth Formula "),
             "what is __ L?\n",
+            "NOTE: not done\n"
         ]
     )
     ans.RecurseAnswer(adoc)
