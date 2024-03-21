@@ -1,7 +1,7 @@
 Generate question & answer sheets for Wireless and Mobile Networks
 
 ## Dependancy Management
-If you'd like to run this project, you will need to [install nix](https://nixos.org/download/) and [enable flakes](https://nixos.wiki/wiki/Flakes).
+If you'd like to run this project, you will need to [install the nix package manager](https://nixos.org/download/) and [enable flakes](https://nixos.wiki/wiki/Flakes).
 
 ## Running
 
