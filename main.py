@@ -237,7 +237,7 @@ def ShannonSolveB(vars):
     return base
 
 
-def NyquistQueryC(vars):
+def NyquistQueryC():
     vars = {}
     ans = NyquistSolveC(vars)
     qdoc, adoc = qSubSect(
@@ -258,7 +258,7 @@ def NyquistSolveC(vars):
     return SolveFragment("C", "2 \cdot $B \cdot $L", "2 * $B * $L", [l, b], [l, b])
 
 
-def NyquistQueryL(vars):
+def NyquistQueryL():
     vars = {}
     ans = NyquistSolveL(vars)
     qdoc, adoc = qSubSect(
@@ -417,28 +417,28 @@ if __name__ == "__main__":
     adoc = Document(geometry_options=geometry_options)
 
     sq, sa = qSect("Snannon Capacity")
+    queries = [ShannonQueryC, ShannonQueryB]
     qdoc.append(sq)
     adoc.append(sa)
 
-    q, a = ShannonQueryC()
-    sq.append(q)
-    sa.append(a)
-
-    q, a = ShannonQueryB()
-    sq.append(q)
-    sa.append(a)
+    for query in queries:
+        c = random.randint(1, 5)
+        for i in range(c):
+            q, a = query()
+            sq.append(q)
+            sa.append(a)
 
     sq, sa = qSect("Nyquist Bandwidth")
+    queries = [NyquistQueryC, NyquistQueryL]
     qdoc.append(sq)
     adoc.append(sa)
 
-    q, a = NyquistQueryC(vars)
-    sq.append(q)
-    sa.append(a)
-
-    q, a = NyquistQueryL(vars)
-    sq.append(q)
-    sa.append(a)
+    for query in queries:
+        c = random.randint(1, 5)
+        for i in range(c):
+            q, a = query()
+            sq.append(q)
+            sa.append(a)
 
     # making a pdf using .generate_pdf
     if not os.path.isdir("./build"):
