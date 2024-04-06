@@ -67,6 +67,7 @@ class SolveFragment:
             )
             print("answer", self.qalcFormula, vars)
             r = t.substitute(vars)
+            print("answer r", r)
             if recurse:
                 return r
             self.answer = qalculate(r)
@@ -319,11 +320,11 @@ def RandomB():
     rng = random.randint(0, 3)
     i = random.randint(1, 6)
     if rng == 0:
-        return SolveFragment("B", "{}KHz".format(i), "{}E3".format(i))
+        return SolveFragment("B", "{}KHz".format(i), "({}E3)".format(i))
     elif rng == 1:
-        return SolveFragment("B", "{}MHz".format(i), "{}E6".format(i))
+        return SolveFragment("B", "{}MHz".format(i), "({}E6)".format(i))
     elif rng == 2:
-        return SolveFragment("B", "{}GHz".format(i), "{}E9".format(i))
+        return SolveFragment("B", "{}GHz".format(i), "({}E9)".format(i))
     elif rng == 3:
         return SolveB
 
@@ -332,11 +333,11 @@ def RandomC():
     rng = random.randint(0, 2)
     i = random.randint(1, 6)
     if rng == 0:
-        return SolveFragment("C", "{}Kbps".format(i), "{}E3".format(i))
+        return SolveFragment("C", "{}Kbps".format(i), "({}E3)".format(i))
     elif rng == 1:
-        return SolveFragment("C", "{}Mbps".format(i), "{}E6".format(i))
+        return SolveFragment("C", "{}Mbps".format(i), "({}E6)".format(i))
     elif rng == 2:
-        return SolveFragment("C", "{}Gbps".format(i), "{}E9".format(i))
+        return SolveFragment("C", "{}Gbps".format(i), "({}E9)".format(i))
 
 
 def RandomSNR_dB():
@@ -364,21 +365,27 @@ def RandomSNR():
         return SolveFragment("SNR", "{}.{}".format(u, l), "{}.{}".format(u, l))
 
 
+def RandomFrq():
+    rng = random.randint(0, 1)
+    frequency = random.randint(9, 999)
+    if rng == 0:
+        return SolveFragment("f", "{}MHz".format(frequency), "({}E6)".format(frequency))
+    if rng == 1:
+        return SolveFragment("f", "{}GHz".format(frequency), "({}E9)".format(frequency))
+
 def RandomFrqSet():
     rng = random.randint(0, 1)
+    lower = random.randint(1, 99) * 100
+    upper = lower + (random.randint(1, 99) * 100)
     if rng == 0:
-        lower = random.randint(1, 99) * 100
-        upper = lower + (random.randint(1, 99) * 100)
         return (
-            SolveFragment("f_H", "{}KHz".format(upper), "{}E3".format(upper)),
-            SolveFragment("f_L", "{}KHz".format(lower), "{}E3".format(lower)),
+            SolveFragment("f_H", "{}KHz".format(upper), "({}E3)".format(upper)),
+            SolveFragment("f_L", "{}KHz".format(lower), "({}E3)".format(lower)),
         )
     if rng == 1:
-        lower = random.randint(1, 99) * 10
-        upper = lower + (random.randint(1, 99) * 10)
         return (
-            SolveFragment("f_H", "{}MHz".format(upper), "{}E6".format(upper)),
-            SolveFragment("f_L", "{}MHz".format(lower), "{}E6".format(lower)),
+            SolveFragment("f_H", "{}MHz".format(upper), "({}E6)".format(upper)),
+            SolveFragment("f_L", "{}MHz".format(lower), "({}E6)".format(lower)),
         )
 
 
@@ -410,6 +417,63 @@ def RandomL():
         return SolveFragment("L", "{}".format(i), "{}".format(i))
 
 
+def GainQueryG():
+    vars = {}
+    ans = solveG(vars)
+    qdoc, adoc = qSubSect(
+        [
+            qGiven(vars),
+            "What is the Antenna Gain G?\n",
+        ]
+    )
+    ans.RecurseAnswer(adoc)
+    return qdoc, adoc
+
+def GainQueryGdB():
+    vars = {}
+    ans = solveGdB(vars)
+    qdoc, adoc = qSubSect(
+        [
+            qGiven(vars),
+            "What is the Antenna Gain G_{dB}?\n",
+        ]
+    )
+    ans.RecurseAnswer(adoc)
+    return qdoc, adoc
+
+def solveGdB(vars):
+    g = solveG(vars)
+
+    base = SolveFragment("GdB", "10 \log_{10}$G", "10 log10($G)", [g], [g], latexName="G_{dB}")
+    return base
+
+def solveG(vars):
+    rng = random.randint(0, 1)
+    rng = 0
+    if rng == 0:
+        return SolveGViaFrequency(vars)
+    elif rng == 1:
+        return SolveGViaLambda(vars)
+
+
+def SolveGViaLambda(vars):
+    effectiveArea = RandomVar(vars, "Ae", randomEffectiveArea)
+    lambdA = RandomVar(vars, "lambda", randomLambda)
+    return SolveFragment("G", "\\frac{4\pi A_e}{\lambda^2}", "(4 pi $Ae)/($lambda)", [effectiveArea, lambdA], [effectiveArea, lambdA])
+
+def SolveGViaFrequency(vars):
+    effectiveArea = RandomVar(vars, "Ae", randomEffectiveArea)
+    frequency = RandomVar(vars, "f", RandomFrq)
+    return SolveFragment("G", "\\frac{4\pi $f^2 A_e}{c^2}", "(4 pi $f $Ae)/((3E8)^2)", [effectiveArea, frequency], [effectiveArea, frequency])
+
+def randomEffectiveArea():
+    i = random.randint(1, 99) / 10
+    return SolveFragment("Ae", "{}m^2".format(i), "{}".format(i), latexName="A_e")
+
+def randomLambda():
+    i = 3 * math.pow(10, random.randint(-1, 4))
+    return SolveFragment("lambda", "{}".format(i), "{}".format(i), latexName="\lambda")
+
 if __name__ == "__main__":
     random.seed()
     geometry_options = {"margin": "1cm"}
@@ -429,7 +493,19 @@ if __name__ == "__main__":
             sa.append(a)
 
     sq, sa = qSect("Nyquist Bandwidth")
-    queries = [NyquistQueryC, NyquistQueryL]
+    queries = [NyquistQueryC]
+    qdoc.append(sq)
+    adoc.append(sa)
+
+    for query in queries:
+        c = random.randint(1, 5)
+        for i in range(c):
+            q, a = query()
+            sq.append(q)
+            sa.append(a)
+
+    sq, sa = qSect("Antenna Gain")
+    queries = [GainQueryG, GainQueryGdB]
     qdoc.append(sq)
     adoc.append(sa)
 
